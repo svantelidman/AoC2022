@@ -10,8 +10,7 @@ fn part_1(input: &str) -> usize {
 fn part_2(input: &str) -> usize {
     let mut cals = parse_calories(input);
     cals.sort();
-    let cals: Vec<_> = cals.into_iter().rev().collect();
-    cals.into_iter().take(3).sum::<usize>()
+    cals.into_iter().rev().take(3).sum::<usize>()
 }
 
 fn parse_calories(input: &str) -> Vec<usize> {
