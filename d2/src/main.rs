@@ -78,10 +78,29 @@ impl Round {
         };
         Round {my_shape_part_1, your_shape, verdict_part_2}
     }
-
-    fn score_part_1(&self) -> usize {
-        Verdict::new(&self.my_shape_part_1, &self.your_shape).points() + &self.my_shape_part_1.points()
+    
+    fn score_part_1_a(&self) -> usize {
+        match (self.my_shape_part_1, self.your_shape) {
+            (Shape::Rock, Shape::Rock) => 3 + 1,
+            (Shape::Rock, Shape::Paper) => 6 + 2,
+            (Shape::Rock, Shape::Scissors) => 0 + 3,
+            _ => unimplemented!()
+        }
     }
+
+    fn score_part_1_b(&self) -> usize {
+        match self {
+            Round { my_shape_part_1: Shape::Rock, your_shape: Shape::Rock, verdict_part_2: _ } => 3 + 1,
+            Round { my_shape_part_1: Shape::Rock, your_shape: Shape::Paper, verdict_part_2: _ } => 6 + 2,
+            Round { my_shape_part_1: Shape::Rock, your_shape: Shape::Scissors, verdict_part_2: _ } => 0 + 3,
+            _ => unimplemented!()
+        }
+    }
+
+
+    // fn score_part_1(&self) -> usize {
+    //     Verdict::new(&self.my_shape_part_1, &self.your_shape).points() + &self.my_shape_part_1.points()
+    // }
 
     fn score_part_2(&self) -> usize {
         let my_shape = &self.your_shape.my_shape_to_get_verdict(&self.verdict_part_2);
