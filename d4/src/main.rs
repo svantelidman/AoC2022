@@ -6,11 +6,17 @@ fn main() {
 }
 
 fn part_1(input: &str) -> usize {
-    parse_pairs(input).iter().filter(|p| p.fully_overlapping()).count()
+    parse_pairs(input)
+        .iter()
+        .filter(|p| p.fully_overlapping())
+        .count()
 }
 
 fn part_2(input: &str) -> usize {
-    parse_pairs(input).iter().filter(|p| p.overlapping()).count()
+    parse_pairs(input)
+        .iter()
+        .filter(|p| p.overlapping())
+        .count()
 }
 
 fn parse_pairs(input: &str) -> Vec<Pair> {
@@ -19,7 +25,7 @@ fn parse_pairs(input: &str) -> Vec<Pair> {
 
 struct Pair {
     a: Assignment,
-    b: Assignment
+    b: Assignment,
 }
 
 impl Pair {
@@ -27,7 +33,7 @@ impl Pair {
         let mut it = line.split(',');
         let a = Assignment::parse(it.next().unwrap());
         let b = Assignment::parse(it.next().unwrap());
-        Pair{a, b}
+        Pair { a, b }
     }
 
     fn fully_overlapping(&self) -> bool {
@@ -35,7 +41,7 @@ impl Pair {
     }
 
     fn partially_overlapping(&self) -> bool {
-        self.a.partially_overlapping(&self.b)        
+        self.a.partially_overlapping(&self.b)
     }
 
     fn overlapping(&self) -> bool {
@@ -45,7 +51,7 @@ impl Pair {
 
 struct Assignment {
     min: usize,
-    max: usize
+    max: usize,
 }
 
 impl Assignment {
@@ -53,7 +59,7 @@ impl Assignment {
         let mut it = s.split('-');
         let min = it.next().unwrap().parse::<usize>().unwrap();
         let max = it.next().unwrap().parse::<usize>().unwrap();
-        Assignment{min, max}
+        Assignment { min, max }
     }
 
     fn contains(&self, other: &Assignment) -> bool {
