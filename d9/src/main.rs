@@ -51,9 +51,7 @@ fn count_tail_positions(moves: &Vec<Move>, n_knots: usize) -> usize {
 fn update_tail_pos(mut tail_pos: (isize, isize), head_pos: &(isize, isize)) -> (isize, isize) {
     let x_dist = (tail_pos.0 - head_pos.0).abs();
     let y_dist = (tail_pos.1 - head_pos.1).abs();
-    if (x_dist + y_dist) <= 1 || (x_dist == 1 && y_dist == 1) {
-        return tail_pos
-    } else {
+    if ((x_dist + y_dist) > 1) && (x_dist != 1 || y_dist != 1) {
         tail_pos.1 += (head_pos.1 - tail_pos.1).signum();
         tail_pos.0 += (head_pos.0 - tail_pos.0).signum();
     }
