@@ -20,7 +20,7 @@ fn monkey_round(mut monkeys: Vec<Monkey>, part: usize, part_2_divisor: usize) ->
         for (new_item_value, target) in monkeys[ind].new_items_with_targets(part, part_2_divisor) {
             monkeys[target].items.push(new_item_value);
             monkeys[ind].n_inspections += monkeys[ind].items.len();
-            monkeys[ind].items = vec!()
+            monkeys[ind].items = vec![]
         }
     }
     monkeys
@@ -33,24 +33,27 @@ struct Monkey {
     test_value: usize,
     true_target: usize,
     false_target: usize,
-    n_inspections: usize
+    n_inspections: usize,
 }
 
 impl Monkey {
-    fn new_items_with_targets(&self, part: usize, part_2_divisor: usize) -> Vec<(usize, usize)>  { // (new_item_value, target)
-        self.items.iter().map(|item| {
-            let new_item_value = self.operation.apply(*item);
-            if part == 1 {
-                let new_item_value = new_item_value / 3;
-                let target = self.get_target(new_item_value);
-                (new_item_value, target)
-            } else {
-                let target = self.get_target(new_item_value);
-                let new_item_value = new_item_value % part_2_divisor;
-                (new_item_value, target)
-            }
-        }
-        ).collect()
+    fn new_items_with_targets(&self, part: usize, part_2_divisor: usize) -> Vec<(usize, usize)> {
+        // (new_item_value, target)
+        self.items
+            .iter()
+            .map(|item| {
+                let new_item_value = self.operation.apply(*item);
+                if part == 1 {
+                    let new_item_value = new_item_value / 3;
+                    let target = self.get_target(new_item_value);
+                    (new_item_value, target)
+                } else {
+                    let target = self.get_target(new_item_value);
+                    let new_item_value = new_item_value % part_2_divisor;
+                    (new_item_value, target)
+                }
+            })
+            .collect()
     }
 
     fn get_target(&self, item: usize) -> usize {
@@ -65,13 +68,16 @@ impl Monkey {
         let mut lines = s.lines();
         lines.next();
         let items_line = lines.next().unwrap();
-        let items = items_line[18..].split(", ").map(|s| s.parse::<usize>().unwrap()).collect();
+        let items = items_line[18..]
+            .split(", ")
+            .map(|s| s.parse::<usize>().unwrap())
+            .collect();
         let operation_line = lines.next().unwrap();
         let operation = if let Ok(value) = operation_line[25..].parse::<usize>() {
             match &operation_line[23..24] {
-                "+" => Operation::Add{value},
-                "*" => Operation::Multiply{value},
-                _ => panic!("Unknown operation")
+                "+" => Operation::Add { value },
+                "*" => Operation::Multiply { value },
+                _ => panic!("Unknown operation"),
             }
         } else {
             Operation::Square
@@ -84,23 +90,30 @@ impl Monkey {
         let false_target = false_line[30..].parse::<usize>().unwrap();
 
         let n_inspections = 0;
-        Monkey{ items, operation, test_value, true_target, false_target, n_inspections}
+        Monkey {
+            items,
+            operation,
+            test_value,
+            true_target,
+            false_target,
+            n_inspections,
+        }
     }
 }
 
 #[derive(Clone)]
 enum Operation {
-    Add {value: usize},
-    Multiply {value: usize},
-    Square
+    Add { value: usize },
+    Multiply { value: usize },
+    Square,
 }
 
 impl Operation {
     fn apply(&self, item: usize) -> usize {
         match &self {
-            Operation::Add{value} => item + value,
-            Operation::Multiply{value} => item * value,
-            Operation::Square => item * item      
+            Operation::Add { value } => item + value,
+            Operation::Multiply { value } => item * value,
+            Operation::Square => item * item,
         }
     }
 }
@@ -124,5 +137,4 @@ mod tests {
         let monkeys = parse_monkeys(include_str!("../test.txt"));
         assert_eq!(part_1_and_2(monkeys, 2), 2713310158)
     }
-
 }
