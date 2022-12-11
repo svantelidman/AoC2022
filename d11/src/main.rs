@@ -18,11 +18,11 @@ fn part_1_and_2(mut monkeys: Vec<Monkey>, part: usize) -> usize {
 fn monkey_round(mut monkeys: Vec<Monkey>, part: usize, part_2_divisor: usize) -> Vec<Monkey> {
     for ind in 0..monkeys.len() {
         for (new_item_value, target) in monkeys[ind].new_items_with_targets(part, part_2_divisor) {
-            monkeys[target].items.push(new_item_value);
-            monkeys[ind].n_inspections += monkeys[ind].items.len();
-            monkeys[ind].items = vec![]
+            monkeys[target].items.push(new_item_value)
         }
-    }
+        monkeys[ind].n_inspections += monkeys[ind].items.len();
+        monkeys[ind].items = vec![]
+}
     monkeys
 }
 
@@ -38,7 +38,6 @@ struct Monkey {
 
 impl Monkey {
     fn new_items_with_targets(&self, part: usize, part_2_divisor: usize) -> Vec<(usize, usize)> {
-        // (new_item_value, target)
         self.items
             .iter()
             .map(|item| {
