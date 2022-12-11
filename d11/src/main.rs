@@ -39,24 +39,26 @@ struct Monkey {
 impl Monkey {
     fn new_items_with_targets(&self, part: usize, part_2_divisor: usize) -> Vec<(usize, usize)>  { // (new_item_value, target)
         self.items.iter().map(|item| {
-            let mut new_item_value =  if part == 1 {
-                self.operation.apply(*item) / 3
+            let new_item_value = self.operation.apply(*item);
+            if part == 1 {
+                let new_item_value = new_item_value / 3;
+                let target = self.get_target(new_item_value);
+                (new_item_value, target)
             } else {
-                self.operation.apply(*item)
-            };
-            let target = if new_item_value % self.test_value == 0 {
-                self.true_target
-            } else {
-                self.false_target
-            };
-            new_item_value = if part == 1 {
-                new_item_value
-            } else {
-                new_item_value % part_2_divisor
-            };
-            (new_item_value, target)
+                let target = self.get_target(new_item_value);
+                let new_item_value = new_item_value % part_2_divisor;
+                (new_item_value, target)
+            }
         }
         ).collect()
+    }
+
+    fn get_target(&self, item: usize) -> usize {
+        if item % self.test_value == 0 {
+            self.true_target
+        } else {
+            self.false_target
+        }
     }
 
     fn parse(s: &str) -> Self {
