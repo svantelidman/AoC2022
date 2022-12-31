@@ -1,41 +1,74 @@
-use regex::Regex;
+use regex::{Regex};
 use std::{collections::{HashMap}};
-
+use itertools::Itertools;
 fn main() {
     let pipe_system = parse_pipe_system(include_str!("../test.txt"));
-    println!("Part 1: {}", part_1(pipe_system));
-    println!("Part 2: {}", 0);
+    let pipe_system = pre_process(pipe_system);
+    println!("{:#?}", explore(pipe_system, 30));
 }
 
 #[derive(Debug, Clone, Ord, PartialOrd, PartialEq, Eq, Hash)]
 struct Valve {
     label: String,
-    capacity: usize,
-    connected_valves: Vec<String>,
+    capacity: u16,
+    connected_valves: Vec<String>
 }
 
-#[derive(Clone, Debug, Ord, PartialOrd, PartialEq, Eq, Hash)]
-enum Action {
-    Move { from_valve_label:String, to_valve_label: String },
-    Open { valve_label: String, capacity: usize },
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct ExplorationState {
+    released_pressure: u16,
+    total_capacity: u16,
+    current_valve: String,
+    open_valves: Vec<String>,
+    round: u16
 }
 
-impl Action {
-    fn start_valve(&self) -> &String {
-        match self {
-            Action::Move { from_valve_label, to_valve_label: _ } => from_valve_label,
-            Action::Open { valve_label, capacity: _ } => valve_label
-        }
+impl ExplorationState {
+    fn move_to_and_open(mut self, valve: &String, cost: u16, capacity: u16) -> Self {
+        self.current_valve = valve.clone();
+        self.released_pressure += (cost + 1) * self.total_capacity;
+        self.open_valves.push(valve.clone());
+        self.total_capacity += capacity;
+        self.round += cost + 1;
+        self
     }
 
-    fn is_move(&self) -> bool {
-        if let Action::Move{from_valve_label: _, to_valve_label: _} = self {
-            true
-        } else {
-            false
-        }
+    fn flow_to_round(mut self, target_round: u16) -> Self {
+        self.released_pressure += (target_round - self.round) * self.total_capacity;
+        self.round = target_round;
+        self
     }
 }
+
+fn explore(pipe_system: PipeSystem, n_rounds: u16) -> u16 {
+    let mut active_states = vec![ExplorationState{ current_valve: String::from("AA"), released_pressure: 0, total_capacity: 0, round: 0, open_valves: vec![]}];
+    let mut max_released_pressure = u16::MIN;
+    let n_valves_to_open = pipe_system.valve_capacity.iter().filter(|(_, cap)| **cap > 0).count();
+    while !active_states.is_empty() {
+        let mut next_states: Vec<ExplorationState> = vec![];
+        for state in active_states {
+            if state.open_valves.len() == n_valves_to_open {
+                max_released_pressure = max_released_pressure.max(state.flow_to_round(n_rounds).released_pressure);
+            } else {
+                for vp in pipe_system.valve_paths.get(&state.current_valve).unwrap() {
+                    if !state.open_valves.contains(&vp.end_valve) {
+                        if vp.cost + state.round + 1 <= n_rounds {
+                            next_states.push(state.clone().move_to_and_open(&vp.end_valve, vp.cost, *pipe_system.valve_capacity.get(&vp.end_valve).unwrap()))
+                        } else {
+                            max_released_pressure = max_released_pressure.max(state.clone().flow_to_round(n_rounds).released_pressure)
+                        }    
+                    }
+                }
+    
+            }
+        }
+        active_states = next_states;
+        active_states.sort();
+        active_states.dedup();
+    }
+    max_released_pressure
+}
+
 
 fn parse_pipe_system(input: &str) -> HashMap<String, Valve> {
     let re =
@@ -46,184 +79,90 @@ fn parse_pipe_system(input: &str) -> HashMap<String, Valve> {
         .map(|line| {
             let caps = re.captures(line).unwrap();
             let label = String::from(&caps[1]);
-            let capacity = caps[2].parse::<usize>().unwrap();
-            let connected_valves = caps[3].split(", ").map(|s| String::from(s)).collect();
+            let capacity = caps[2].parse::<u16>().unwrap();
+            let connected_valves: Vec<_> = caps[3].split(", ").map(|s| String::from(s)).collect();
             (
                 label.clone(),
                 Valve {
                     label,
                     capacity,
-                    connected_valves,
+                    connected_valves
                 },
             )
         })
         .collect()
 }
 
-#[derive(Clone)]
-struct ActionSequence {
-    actions: Vec<Action>,
-    open_valves: Vec<String>,
-    released_pressure: usize,
-    total_capacity: usize,
-    current_valve: String
+#[derive(Clone, Debug)]
+struct SearchPath {
+    start_valve: String,
+    current_valve: String,
+    cost: u16
 }
 
-impl ActionSequence {
-    fn add_action(&mut self, action: Action) {
-        self.released_pressure += self.total_capacity;
-        match &action {
-            Action::Open{valve_label, capacity} => {
-                self.current_valve = valve_label.clone();
-                self.total_capacity += capacity;
-                self.open_valves.push(valve_label.clone());
-                // Av någon jävla anledningen så blir resulatet instabilt om man sorterar här
-                // self.open_valves.sort();
-            },
-            Action::Move { from_valve_label: _, to_valve_label } => {
-                self.current_valve = to_valve_label.clone()
-            }
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+struct ValvePath {
+    start_valve: String,
+    end_valve: String,
+    cost: u16    
+}
+
+
+#[derive(Debug)]
+struct PipeSystem {
+    valve_paths: HashMap<String, Vec<ValvePath>>,
+    valve_capacity: HashMap<String, u16>
+}
+
+impl PipeSystem {
+    fn new(valve_capacity: Vec<(String, u16)>, valve_paths: HashMap<String, Vec<ValvePath>>) -> Self {
+        PipeSystem {
+            valve_capacity: valve_capacity.into_iter().collect(),
+            valve_paths
         }
-        self.actions.push(action)
-    }
-
-    fn is_current_valve_open(&self) -> bool {
-        self.open_valves.contains(&self.current_valve)
-    }
+    } 
 }
 
-fn keep_best(action_sequences: Vec<ActionSequence>) -> Vec<ActionSequence> {
-    let mut best_by_pipe_system_state: HashMap<(String, Vec<String>), ActionSequence> = HashMap::new();
-    for sequence in action_sequences {
-        match best_by_pipe_system_state.get(&(sequence.current_valve.clone(), sequence.open_valves.clone())) {
-            Some(best_sequence) => {
-                if sequence.total_capacity > best_sequence.total_capacity && sequence.released_pressure > best_sequence.released_pressure {
-                    best_by_pipe_system_state.insert((sequence.current_valve.clone(), sequence.open_valves.clone()), sequence);
-                }    
-            },
-            None => {
-                best_by_pipe_system_state.insert((sequence.current_valve.clone(), sequence.open_valves.clone()), sequence);
+fn pre_process(pipe_system: HashMap<String, Valve>) -> PipeSystem {
+    let valves_worth_opening: Vec<_> = pipe_system.iter().filter(|(_, v)| v.capacity > 0).map(|(_, v)| String::from(&v.label)).collect();
+    let end_valves = valves_worth_opening;
+    let mut start_valves = vec![String::from("AA")];
+    start_valves.append(&mut end_valves.clone());
+    let mut all_valve_paths: Vec<ValvePath> = vec![];
+
+    for start_valve in &start_valves {
+        let mut done_valve_paths: Vec<ValvePath> = vec![];
+        let mut search_paths = vec![SearchPath{start_valve: String::from(start_valve), current_valve: String::from(start_valve), cost: 0}];
+        let number_of_paths_to_find = if start_valve == "AA" {
+            end_valves.len()
+        } else {
+            end_valves.len() - 1
+        };
+        while done_valve_paths.len() < number_of_paths_to_find {
+            let mut new_search_paths: Vec<SearchPath> = vec![];
+            for search_path in search_paths {
+
+                let current_valve = pipe_system.get(&search_path.current_valve).unwrap();
+                for connected_valve in &current_valve.connected_valves {
+                    if !done_valve_paths.iter().any(|dvp| dvp.end_valve == *connected_valve) {
+                        if end_valves.contains(&connected_valve) && start_valve != connected_valve {
+                            done_valve_paths.push(ValvePath { start_valve: search_path.start_valve.clone(), end_valve: connected_valve.clone(), cost: search_path.cost + 1 })
+                        }
+                        let mut new_search_path = search_path.clone();
+                        new_search_path.current_valve = connected_valve.clone();
+                        new_search_path.cost += 1;
+                        new_search_paths.push(new_search_path)
+                    }
+                }
             }
+            search_paths = new_search_paths;
         }
+        all_valve_paths.append(&mut done_valve_paths);
     }
+    all_valve_paths.sort();
+    let valve_paths = all_valve_paths.into_iter().group_by(|vp| vp.start_valve.clone()).into_iter().map(|(key, group)| (key.clone(), group.collect())).collect();
 
-    // TODO: På något sätt behöver vi plocka bort dom som har valve-openings som är ett subset av en annan med högre released_pressure och kapacitet
+    let valve_capacity = pipe_system.values().map(|ov| (ov.label.clone(), ov.capacity)).collect();
+    PipeSystem::new(valve_capacity, valve_paths)
 
-    best_by_pipe_system_state.into_iter().map(|(_state, sequence)| sequence).collect()
-}
-
-// fn print_preferred_action_sequence(n_steps: usize, action_sequences: &Vec<Vec<Action>>) {
-//     let mut preferred_path = vec![
-//         Action::Move{valve: String::from("DD")},
-//         Action::Open{valve: String::from("DD"), capacity: 20},
-//         Action::Move{valve: String::from("CC")},
-//         Action::Move{valve: String::from("BB")},
-//         Action::Open{valve: String::from("BB"), capacity: 13},
-//         Action::Move{valve: String::from("AA")},
-//         Action::Move{valve: String::from("II")},
-//         Action::Move{valve: String::from("JJ")},
-//         Action::Open{valve: String::from("JJ"), capacity: 21},
-//         Action::Move{valve: String::from("II")},
-//         Action::Move{valve: String::from("AA")},
-//         Action::Move{valve: String::from("DD")},
-//         Action::Move{valve: String::from("EE")},
-//         Action::Move{valve: String::from("FF")},
-//         Action::Move{valve: String::from("GG")},
-//         Action::Move{valve: String::from("HH")},
-//         Action::Open{valve: String::from("HH"), capacity: 22},
-//         Action::Move{valve: String::from("GG")},
-//         Action::Move{valve: String::from("FF")},
-//         Action::Move{valve: String::from("EE")},
-//         Action::Open{valve: String::from("EE"), capacity: 3},
-//         Action::Move{valve: String::from("DD")},
-//         Action::Move{valve: String::from("CC")},
-//         Action::Open{valve: String::from("CC"), capacity: 2},       
-//         Action::Move{valve: String::from("DD")},
-//         Action::Move{valve: String::from("CC")},
-//         Action::Move{valve: String::from("DD")},
-//         Action::Move{valve: String::from("CC")},
-//         Action::Move{valve: String::from("DD")},
-//         Action::Move{valve: String::from("CC")},
-//         Action::Move{valve: String::from("DD")},
-//         Action::Move{valve: String::from("CC")},
-//     ];
-//     preferred_path = preferred_path.into_iter().take(n_steps).collect();
-//     let preferred_valve_openings_and_rounds = valve_openings_and_rounds(&preferred_path);
-//     let preferred_valve = preferred_path[preferred_path.len()-1].at_valve();
-//     let sequence = action_sequences.iter().find(|seq| {
-//         let valve_openings_and_rounds = valve_openings_and_rounds(seq);
-//         let valve = seq[seq.len() -1].at_valve();
-//         valve == preferred_valve && valve_openings_and_rounds == preferred_valve_openings_and_rounds
-//     });
-//     let sequence = sequence.unwrap();
-//     println!("Total capacity and released pressure: {:?}", total_capacity_and_released_pressure(sequence));
-
-// }
-
-fn part_1(pipe_system: HashMap<String, Valve>) -> usize {
-    let mut action_sequences= vec![];
-    for ind in 1..=30 {
-        println!("\nTime: {ind}");
-        action_sequences = step_once(action_sequences, &pipe_system);
-        let n_seq = action_sequences.len();
-        action_sequences = keep_best(action_sequences);
-        println!("Total action sequences {}, Pruned action sequences: {}", action_sequences.len(), n_seq - action_sequences.len());
-        // print_preferred_action_sequence(ind, &action_sequences);
-    }
-    action_sequences.into_iter().map(|sequence| sequence.released_pressure).max().unwrap()
-}
-
-fn determine_next_actions(sequence: &ActionSequence, pipe_system: &HashMap<String, Valve>) -> Vec<Action> {
-    let previous_action = sequence.actions.iter().last().unwrap();
-    let current_valve = pipe_system.get(&sequence.current_valve).unwrap();
-    let mut actions: Vec<_> = current_valve.connected_valves.iter() 
-    // Av någon jävla anledning så blir det instabilt om man tar bort tillbaka-kakan
-    .filter(|connected_valve| /* *connected_valve != previous_action.start_valve() || !previous_action.is_move() */ true)
-    .map(|v| Action::Move{from_valve_label: sequence.current_valve.clone(), to_valve_label: String::from(v)}).collect();
-    if let Action::Move{from_valve_label: _, to_valve_label: current_valve_label} = previous_action {
-        if !sequence.is_current_valve_open() && current_valve.capacity > 0 {
-            actions.push(Action::Open{valve_label: String::from(current_valve_label), capacity: current_valve.capacity})
-        }   
-    }
-    actions   
-}
-
-fn step_once(
-    action_sequences: Vec<ActionSequence>,
-    pipe_system: &HashMap<String, Valve>) -> Vec<ActionSequence> {
-    if action_sequences.len() == 0 {
-        let start_valve = pipe_system.get("AA").unwrap();
-        start_valve
-            .connected_valves
-            .iter()
-            .map(|v| {
-                ActionSequence {actions: vec![Action::Move { to_valve_label: String::from(v), from_valve_label: String::from("AA") }], released_pressure: 0, total_capacity: 0, current_valve: String::from(v), open_valves: vec![]}
-            })
-            .collect()
-    } else {
-        action_sequences
-            .into_iter()
-            .flat_map(|sequence| {
-                determine_next_actions(&sequence, &pipe_system)
-                    .into_iter()
-                    .map(|action| {
-                        let mut new_sequence = sequence.clone();
-                        new_sequence.add_action(action);
-                        new_sequence
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_part_1() {
-        let pipe_system = parse_pipe_system(include_str!("../test.txt"));
-        assert_eq!(part_1(pipe_system), 1651)
-    }
 }
