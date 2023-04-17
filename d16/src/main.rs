@@ -1,10 +1,11 @@
 use regex::{Regex};
-use std::{collections::{HashMap}};
-use itertools::Itertools;
+use std::{collections::{HashMap, BTreeSet, BTreeMap}};
+use itertools::{Itertools};
 fn main() {
     let pipe_system = parse_pipe_system(include_str!("../test.txt"));
     let pipe_system = pre_process(pipe_system);
-    println!("{:#?}", explore(pipe_system, 30));
+    // println!("Part 1: {}", explore(pipe_system.clone(), 1, 30));
+    println!("Part 2: {}", explore(pipe_system, 2, 26));
 }
 
 #[derive(Debug, Clone, Ord, PartialOrd, PartialEq, Eq, Hash)]
@@ -23,43 +24,87 @@ struct ExplorationState {
     round: u16
 }
 
-impl ExplorationState {
-    fn move_to_and_open(mut self, valve: &String, cost: u16, capacity: u16) -> Self {
-        self.current_valve = valve.clone();
-        self.released_pressure += (cost + 1) * self.total_capacity;
-        self.open_valves.push(valve.clone());
-        self.total_capacity += capacity;
-        self.round += cost + 1;
-        self
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct Explorer {
+    round: u16,
+    current_valve: String
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct ExplorationState2 {
+    explorers: Vec<Explorer>,
+    n_rounds: u16,
+    open_valves: BTreeMap<String, (u16, u16)>, // Label -> (capacity, round_opened)
+}
+
+impl ExplorationState2 {
+    
+    fn new(n_explorers: u16, n_rounds: u16) -> Self {
+        let explorer = Explorer{round: 0, current_valve: String::from("AA")};
+        let mut explorers: Vec<Explorer> = vec![];
+        explorers.resize(n_explorers as usize, explorer);
+        Self{explorers, n_rounds, open_valves: BTreeMap::new()}
     }
 
-    fn flow_to_round(mut self, target_round: u16) -> Self {
-        self.released_pressure += (target_round - self.round) * self.total_capacity;
-        self.round = target_round;
+    fn released_pressure(&self, round: u16) -> u16 {
+        self.open_valves.iter().fold(0, |acc, (_label, (capacity, valve_round))| if *valve_round < round  { acc + capacity * (round - valve_round)} else { acc })
+    }
+
+    fn take_valve_path(mut self, valve_path: &ValvePath) -> Self {
+        self.explorers.iter_mut()
+            .for_each(|explorer|
+                if explorer.current_valve == valve_path.start_valve {
+                    explorer.current_valve = valve_path.end_valve.clone();
+                    explorer.round += valve_path.cost + 1;
+                    self.open_valves.insert(valve_path.end_valve.clone(), (valve_path.capacity, explorer.round));
+                }
+            );
         self
     }
 }
 
-fn explore(pipe_system: PipeSystem, n_rounds: u16) -> u16 {
-    let mut active_states = vec![ExplorationState{ current_valve: String::from("AA"), released_pressure: 0, total_capacity: 0, round: 0, open_valves: vec![]}];
+fn explore(pipe_system: PipeSystem, n_explorers: u16, n_rounds: u16) -> u16 {
+    let mut active_states = vec![ExplorationState2::new(n_explorers, n_rounds)];
     let mut max_released_pressure = u16::MIN;
-    let n_valves_to_open = pipe_system.valve_capacity.iter().filter(|(_, cap)| **cap > 0).count();
+    // Mjäää. we might want to do adepth first where we are greedy to find a reaonable good "limit"
+    // When we have done that we can drop all states that are bound to be worse
     while !active_states.is_empty() {
-        let mut next_states: Vec<ExplorationState> = vec![];
+        println!("\nActive states: {:?}", active_states.len());
+        println!("Max released pressure: {:?}", max_released_pressure);
+        let max_rounds = active_states.iter().map(|state| state.explorers.iter().map(|x| x.round).max().unwrap()).max().unwrap();
+        println!("Max rounds: {:?}", max_rounds);
+        let mut next_states: Vec<ExplorationState2> = vec![];
         for state in active_states {
-            if state.open_valves.len() == n_valves_to_open {
-                max_released_pressure = max_released_pressure.max(state.flow_to_round(n_rounds).released_pressure);
+            let closed_valves: BTreeSet<_> = pipe_system.valves_to_open.iter().filter(|label| !state.open_valves.contains_key(*label)).collect();
+            if closed_valves.is_empty() {
+                max_released_pressure = max_released_pressure.max(state.released_pressure(n_rounds))
             } else {
-                for vp in pipe_system.valve_paths.get(&state.current_valve).unwrap() {
-                    if !state.open_valves.contains(&vp.end_valve) {
-                        if vp.cost + state.round + 1 <= n_rounds {
-                            next_states.push(state.clone().move_to_and_open(&vp.end_valve, vp.cost, *pipe_system.valve_capacity.get(&vp.end_valve).unwrap()))
-                        } else {
-                            max_released_pressure = max_released_pressure.max(state.clone().flow_to_round(n_rounds).released_pressure)
-                        }    
+                let active_explorers: Vec<_> = state.explorers.iter().filter(|explorer| explorer.round < n_rounds - 1).collect();
+                //let active_explorers = &state.explorers;    
+                if active_explorers.len() == 0 {
+                    max_released_pressure = max_released_pressure.max(state.released_pressure(n_rounds))
+                // } else if closed_valves.len() == 1 {
+                //     for exp in active_explorers {
+                //         let path_to_take = pipe_system.valve_paths.get(&exp.current_valve).unwrap().iter().find(|vp| vp.end_valve == **closed_valves.iter().next().unwrap()).unwrap();
+                //         next_states.push(state.clone().take_valve_path(path_to_take))
+                //     }
+                } else {
+                    for selected_valve in closed_valves {
+                        for exp in &active_explorers {
+                            let path_to_take = pipe_system.valve_paths.get(&exp.current_valve).unwrap().iter().find(|vp| vp.end_valve == *selected_valve).unwrap();
+                            next_states.push(state.clone().take_valve_path(path_to_take));
+                        }
                     }
+                    // for selected_valves in closed_valves.iter().permutations(active_explorers.len()) {
+                    //     // println!("Selected valves\n{:?}", selected_valves);
+                    //     let mut next_state = state.clone();
+                    //     for (exp, selected_valve) in active_explorers.iter().zip(selected_valves.iter()) {
+                    //         let path_to_take = pipe_system.valve_paths.get(&exp.current_valve).unwrap().iter().find(|vp| vp.end_valve == ***selected_valve).unwrap();
+                    //         next_state = next_state.take_valve_path(path_to_take);
+                    //     }
+                    //     next_states.push(next_state)
+                    // }
                 }
-    
             }
         }
         active_states = next_states;
@@ -68,7 +113,6 @@ fn explore(pipe_system: PipeSystem, n_rounds: u16) -> u16 {
     }
     max_released_pressure
 }
-
 
 fn parse_pipe_system(input: &str) -> HashMap<String, Valve> {
     let re =
@@ -100,25 +144,25 @@ struct SearchPath {
     cost: u16
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone,Debug, Ord, PartialOrd, Eq, PartialEq)]
 struct ValvePath {
     start_valve: String,
     end_valve: String,
+    capacity: u16,
     cost: u16    
 }
 
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PipeSystem {
-    valve_paths: HashMap<String, Vec<ValvePath>>,
-    valve_capacity: HashMap<String, u16>
+    valve_paths: BTreeMap<String, Vec<ValvePath>>,
+    valves_to_open: BTreeSet<String>
 }
 
 impl PipeSystem {
-    fn new(valve_capacity: Vec<(String, u16)>, valve_paths: HashMap<String, Vec<ValvePath>>) -> Self {
+    fn new(valve_paths: BTreeMap<String, Vec<ValvePath>>, valves_to_open: BTreeSet<String>) -> Self {
         PipeSystem {
-            valve_capacity: valve_capacity.into_iter().collect(),
-            valve_paths
+            valve_paths,
+            valves_to_open: valves_to_open
         }
     } 
 }
@@ -146,7 +190,8 @@ fn pre_process(pipe_system: HashMap<String, Valve>) -> PipeSystem {
                 for connected_valve in &current_valve.connected_valves {
                     if !done_valve_paths.iter().any(|dvp| dvp.end_valve == *connected_valve) {
                         if end_valves.contains(&connected_valve) && start_valve != connected_valve {
-                            done_valve_paths.push(ValvePath { start_valve: search_path.start_valve.clone(), end_valve: connected_valve.clone(), cost: search_path.cost + 1 })
+                            let capacity = pipe_system.get(connected_valve).unwrap().capacity;
+                            done_valve_paths.push(ValvePath { start_valve: search_path.start_valve.clone(), end_valve: connected_valve.clone(), capacity, cost: search_path.cost + 1 })
                         }
                         let mut new_search_path = search_path.clone();
                         new_search_path.current_valve = connected_valve.clone();
@@ -162,7 +207,7 @@ fn pre_process(pipe_system: HashMap<String, Valve>) -> PipeSystem {
     all_valve_paths.sort();
     let valve_paths = all_valve_paths.into_iter().group_by(|vp| vp.start_valve.clone()).into_iter().map(|(key, group)| (key.clone(), group.collect())).collect();
 
-    let valve_capacity = pipe_system.values().map(|ov| (ov.label.clone(), ov.capacity)).collect();
-    PipeSystem::new(valve_capacity, valve_paths)
+    let valves_to_open = end_valves.into_iter().collect();
+    PipeSystem::new( valve_paths, valves_to_open)
 
 }

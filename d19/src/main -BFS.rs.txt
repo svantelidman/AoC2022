@@ -1,0 +1,194 @@
+use regex::Regex;
+use std::collections::BTreeMap;
+
+fn main() {
+    let blueprints = parse_blueprints(include_str!("../test.txt"));
+    println!("Part 1: {}", part_1(&blueprints));
+    println!("Part 2: {}", 0);
+}
+
+fn part_1(blueprints: &Vec<Blueprint>) -> usize {
+    blueprints.iter().enumerate().map(|(ind, bp)| max_geodes_for_blueprint(bp) * (ind + 1)).sum::<usize>()
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Ord, PartialOrd)]
+enum Resource {
+    Ore,
+    Clay,
+    Obsidian,
+    Geode,
+}
+
+#[derive(Debug, Clone)]
+struct RobotType {
+    produces: Resource,
+    cost: BTreeMap<Resource, usize>,
+}
+
+impl RobotType {
+    fn can_build(&self, resources: &BTreeMap<Resource, usize>) -> bool {
+        self.cost.iter().all(|(resource, required)| 
+        if let Some(available) = resources.get(resource) {
+            available >= required
+        } else {
+            false
+        })
+    }
+}
+
+#[derive(Debug)]
+struct Blueprint {
+    id: usize,
+    robot_types: Vec<RobotType>,
+}
+
+fn determine_buildable_robot_types(blueprint: &Blueprint, resources: &BTreeMap<Resource, usize>) -> Vec<RobotType> {
+    blueprint.robot_types.iter().filter(|rt| rt.can_build(resources)).map(|rt| rt.clone()).collect()
+}
+
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+struct SearchState {
+    current_production: BTreeMap<Resource, usize>,
+    resources: BTreeMap<Resource, usize>
+}
+
+impl SearchState {
+    fn new() -> Self {
+        Self {
+            current_production: [(Resource::Ore, 1), (Resource::Clay, 0), (Resource::Obsidian, 0), (Resource::Geode, 0), ].into_iter().collect(),
+            resources: [(Resource::Ore, 0), (Resource::Clay, 0), (Resource::Obsidian, 0), (Resource::Geode, 0)].into_iter().collect()
+        }
+    }
+
+    fn produce(mut self) -> Self {
+        self.resources = self.resources.into_iter()
+            .map(|(resource, current_units)| 
+                if let Some(new_units) = self.current_production.get(&resource) {
+                    (resource, current_units + new_units)
+                } else {
+                    (resource, current_units)
+                }
+            ).collect();
+        self
+    }
+
+    fn build_robot(mut self, robot: &RobotType) -> Self {
+        self.resources = self.resources.into_iter()
+            .map(|(resource, current_units)|  
+                if let Some(cost) = robot.cost.get(&resource) {
+                    (resource, current_units - cost)
+                } else {
+                    (resource, current_units)
+                }
+            ).collect();
+        self.current_production = self.current_production.into_iter()
+            .map(|(resource, n_units)|
+                if resource == robot.produces {
+                    (resource, n_units + 1)
+                } else {
+                    (resource, n_units)
+                }
+            ).collect();
+        self
+    }
+}
+
+fn keep_best(mut search_states: Vec<SearchState>, round: usize) -> Vec<SearchState> {
+    /*
+    
+    Can we somehow prune away those that are worse in the sense that they either:
+    a) Have equal resources but less robots
+    b) Have equal robots but less resources
+
+    Eller en väldigt grov värde funktion
+    Ore är värt 1
+    Clay är värt X Ore
+
+    Tid är ju en faktor också, tid är pengar
+    
+    */
+
+
+    let max_geode = *search_states.iter().map(|state| state.resources.get(&Resource::Geode).unwrap()).max().unwrap();
+    if max_geode > 0 && round >= 23 {
+        println!("Geodes: {max_geode}");
+        search_states = search_states.into_iter().filter(|ss| *ss.resources.get(&Resource::Geode).unwrap() > 0).collect();
+    } 
+    search_states.sort();
+    let before = search_states.len();
+    search_states.dedup();
+    let after = search_states.len();
+    println!("Pruned {} Remaining {}", before - after, after);
+    search_states
+}
+
+fn max_geodes_for_blueprint(blueprint: &Blueprint) -> usize {
+    println!("New blueprint");
+    let mut search_states = vec![SearchState::new()];
+    for round in 0..=32 {
+        println!("round={round}");
+        let mut new_search_states = vec![];
+        for search_state in search_states {
+            let buildable_robots = determine_buildable_robot_types(blueprint, &search_state.resources);
+            let produced_state = search_state.clone().produce();
+            for robot in buildable_robots {
+                let new_state = produced_state.clone().build_robot(&robot);
+                new_search_states.push(new_state);
+            }
+            new_search_states.push(produced_state);
+    }
+        search_states = keep_best(new_search_states, round);
+    }
+    let bp = *search_states.iter().map(|state| state.resources.get(&Resource::Geode).unwrap()).max().unwrap();
+    println!("BP: {bp}");
+    bp
+}
+
+
+fn parse_blueprints(input: &str) -> Vec<Blueprint> {
+    let re = Regex::new(r"Blueprint (\d+): Each ore robot costs (\d+) ore. Each clay robot costs (\d+) ore. Each obsidian robot costs (\d+) ore and (\d+) clay. Each geode robot costs (\d+) ore and (\d+) obsidian.").unwrap();
+    input
+        .lines()
+        .map(|line| {
+            let caps = re.captures(line).unwrap();
+            Blueprint {
+                id: caps[1].parse().unwrap(),
+                robot_types: vec![
+                    RobotType {
+                        produces: Resource::Ore,
+                        cost: BTreeMap::from([(Resource::Ore, caps[2].parse().unwrap())]),
+                    },
+                    RobotType {
+                        produces: Resource::Clay,
+                        cost: BTreeMap::from([(Resource::Ore, caps[3].parse().unwrap())]),
+                    },
+                    RobotType {
+                        produces: Resource::Obsidian,
+                        cost: BTreeMap::from([
+                            (Resource::Ore, caps[4].parse().unwrap()),
+                            (Resource::Clay, caps[5].parse().unwrap()),
+                        ]),
+                    },
+                    RobotType {
+                        produces: Resource::Geode,
+                        cost: BTreeMap::from([
+                            (Resource::Ore, caps[6].parse().unwrap()),
+                            (Resource::Obsidian, caps[7].parse().unwrap()),
+                        ]),
+                    },
+                ],
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_part_1() {
+        let blueprints = parse_blueprints(include_str!("../test.txt"));
+        assert_eq!(part_1(&blueprints), 33)
+    }
+}

@@ -3,7 +3,7 @@ use regex::Regex;
 
 fn main() {
     println!("Part 1: {}", part_1(include_str!("../input.txt")));
-    println!("Part 2: {}", 0);
+    println!("Part 2: {}", part_2(include_str!("../input.txt")));
 }
 
 fn part_1(input: &str) -> usize {
@@ -11,7 +11,28 @@ fn part_1(input: &str) -> usize {
     monkeys.get("root").unwrap().eval(&monkeys)
 }
 
+fn part_2(input: &str) -> usize {
+    let mut monkeys = parse_monkeys(input);
+    if let Monkey::AddingMonkey { first, second } = monkeys.remove("root").unwrap() {
+        monkeys.insert(String::from("root"), Monkey::EqualityMonkey { first, second});
+    } else {
+        panic!("Could not get root monkey.")
+    }
+    for my_shout in 3_243_420_000_000.. {
+        let human = monkeys.get_mut("humn").unwrap();
+        human.shout_this_number(my_shout);
+        if monkeys.get("root").unwrap().eval(&monkeys) == 1 {
+            return my_shout
+        }
+    }
+    panic!("Could not find number to shout!")
+}
+
 enum Monkey {
+    EqualityMonkey {
+        first: String,
+        second: String
+    },
     AddingMonkey {
         first: String,
         second: String
@@ -36,6 +57,16 @@ enum Monkey {
 impl Monkey {
     fn eval(&self, monkeys: &HashMap<String, Monkey>) -> usize {
         match self {
+            Monkey::EqualityMonkey { first, second } => {
+                let first_value  = monkeys.get(first).unwrap().eval(monkeys);
+                let second_value = monkeys.get(second).unwrap().eval(monkeys);
+                println!("1: {first_value}\n2: {second_value}");
+                if  first_value == second_value {
+                    1  // C-style true
+                } else {
+                    0  // C-style false
+                }
+            },
             Monkey::AddingMonkey { first, second } => {
                 monkeys.get(first).unwrap().eval(monkeys) + monkeys.get(second).unwrap().eval(monkeys)
             },
@@ -49,6 +80,13 @@ impl Monkey {
                 monkeys.get(first).unwrap().eval(monkeys) * monkeys.get(second).unwrap().eval(monkeys)
             },
             Monkey::NumberMonkey { number } => *number
+        }
+    }
+    
+    fn shout_this_number(&mut self, number_to_shout: usize) {
+        match self {
+            Monkey::NumberMonkey { number } => *number = number_to_shout,
+            _ => panic!("Only number monkeys can shout numbers.")
         }
     }
 }
